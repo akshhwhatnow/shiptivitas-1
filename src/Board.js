@@ -7,20 +7,85 @@ import './Board.css';
 export default class Board extends React.Component {
   constructor(props) {
     super(props);
-    const clients = this.getClients();
+
+    // Every shipping request starts in Backlog.
     this.state = {
       clients: {
-        backlog: clients.filter(client => !client.status || client.status === 'backlog'),
-        inProgress: clients.filter(client => client.status && client.status === 'in-progress'),
-        complete: clients.filter(client => client.status && client.status === 'complete'),
-      }
-    }
+        backlog: this.getClients().map(client => ({
+          ...client,
+          status: 'backlog',
+        })),
+        inProgress: [],
+        complete: [],
+      },
+    };
+
     this.swimlanes = {
       backlog: React.createRef(),
       inProgress: React.createRef(),
       complete: React.createRef(),
+    };
+  }
+
+  componentDidMount() {
+    this.drake = Dragula([
+      this.swimlanes.backlog.current,
+      this.swimlanes.inProgress.current,
+      this.swimlanes.complete.current,
+    ]);
+
+    this.drake.on('drop', this.handleDrop);
+  }
+
+  componentWillUnmount() {
+    if (this.drake) {
+      this.drake.destroy();
     }
   }
+
+  handleDrop = (element, target) => {
+    if (!target) {
+      return;
+    }
+
+    const currentClients = [
+      ...this.state.clients.backlog,
+      ...this.state.clients.inProgress,
+      ...this.state.clients.complete,
+    ];
+    const clientsById = {};
+    currentClients.forEach(client => {
+      clientsById[client.id] = client;
+    });
+
+    const lanes = [
+      { ref: this.swimlanes.backlog, key: 'backlog', status: 'backlog' },
+      { ref: this.swimlanes.inProgress, key: 'inProgress', status: 'in-progress' },
+      { ref: this.swimlanes.complete, key: 'complete', status: 'complete' },
+    ];
+
+    const nextClients = {
+      backlog: [],
+      inProgress: [],
+      complete: [],
+    };
+
+    lanes.forEach(lane => {
+      const container = lane.ref.current;
+      Array.from(container.children).forEach(cardElement => {
+        const client = clientsById[cardElement.getAttribute('data-id')];
+        if (client) {
+          nextClients[lane.key].push({
+            ...client,
+            status: lane.status,
+          });
+        }
+      });
+    });
+
+    this.setState({ clients: nextClients });
+  };
+
   getClients() {
     return [
       ['1','Stark, White and Abbott','Cloned Optimal Architecture', 'in-progress'],
@@ -50,9 +115,14 @@ export default class Board extends React.Component {
       status: companyDetails[3],
     }));
   }
+
   renderSwimlane(name, clients, ref) {
     return (
-      <Swimlane name={name} clients={clients} dragulaRef={ref}/>
+      <Swimlane
+        name={name}
+        clients={clients}
+        dragulaRef={ref}
+      />
     );
   }
 
